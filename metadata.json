@@ -1,0 +1,6 @@
+{
+  "name": "إقامة غروب شمس | Ghorob Chams Residence",
+  "description": "Furnished coastal holiday apartments in Briech, Morocco, near the sea and just 10 km from Asilah. Peaceful stays, sunset sea views, and direct WhatsApp reservations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
