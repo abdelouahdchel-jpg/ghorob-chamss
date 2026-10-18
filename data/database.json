@@ -17,6 +17,16 @@
         "token": "3583810bcac58c418bf556b381d707ada5b9bfc643f0066b5ce4cacf83c73f1d",
         "createdAt": "2026-10-18T09:06:57.817Z",
         "expiresAt": "2026-10-25T09:06:57.817Z"
+      },
+      {
+        "token": "92f37f699ee87ff3f87941659e9f4bd75d330210f93a851c722cc7433c677f2e",
+        "createdAt": "2026-10-18T09:11:33.912Z",
+        "expiresAt": "2026-10-25T09:11:33.912Z"
+      },
+      {
+        "token": "b41a82911d38797f539fa9fb75e06507cf874c0572163c35702f4281f8335a6b",
+        "createdAt": "2026-10-18T09:31:02.292Z",
+        "expiresAt": "2026-10-25T09:31:02.292Z"
       }
     ]
   },
@@ -174,7 +184,7 @@
       "maxGuests": 3,
       "floor": 2,
       "areaM2": 52,
-      "pricePerNight": 450,
+      "pricePerNight": 600,
       "pricePerMonth": 6000,
       "currency": "MAD",
       "furnished": true,
@@ -409,12 +419,8 @@
           "10 Autominuten ins Stadtzentrum von Asilah"
         ]
       },
-      "images": [
-        "/src/assets/images/apartment_bedroom_1792176295110.jpg",
-        "/src/assets/images/apartment_sea_view_1792176294057.jpg",
-        "/src/assets/images/hero_sunset_coastal_1792176292926.jpg"
-      ],
-      "status": "available",
+      "images": [],
+      "status": "maintenance",
       "featured": false,
       "isDemo": true,
       "demoNotice": {
@@ -428,6 +434,23 @@
     }
   ],
   "inquiries": [
+    {
+      "id": "GC-971655",
+      "guestName": "محمد",
+      "phone": "+212 6613512213",
+      "countryCode": "+212",
+      "apartmentId": "apt-coastal-suite-2",
+      "apartmentTitle": "Coastal Breeze Suite (1 Bedroom)",
+      "checkIn": "2026-10-19",
+      "checkOut": "2026-10-22",
+      "guestsCount": 2,
+      "nightsCount": 3,
+      "estimatedTotal": 1800,
+      "currency": "MAD",
+      "message": "",
+      "status": "new",
+      "createdAt": "2026-10-18T09:25:15.266Z"
+    },
     {
       "id": "inq-sample-101",
       "guestName": "Yassine El Fassi",

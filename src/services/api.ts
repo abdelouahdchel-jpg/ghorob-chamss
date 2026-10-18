@@ -262,13 +262,18 @@ export async function apiAdminUpdateInquiryStatus(
  * Admin: Delete Inquiry
  */
 export async function apiAdminDeleteInquiry(id: string, token: string): Promise<void> {
-  const res = await fetch(getApiUrl(`/api/inquiries/${id}`), {
+  const cleanId = (id || '').trim();
+  const res = await fetch(getApiUrl(`/api/inquiries/${encodeURIComponent(cleanId)}`), {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` }
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
   });
 
   if (!res.ok) {
-    throw new Error('Failed to delete inquiry');
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to delete inquiry (Status ${res.status})`);
   }
 }
 

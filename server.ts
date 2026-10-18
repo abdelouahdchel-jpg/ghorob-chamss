@@ -435,14 +435,19 @@ Sitemap: ${domain}/sitemap.xml
   // Protected: Delete inquiry
   app.delete('/api/inquiries/:id', authenticateAdmin, async (req: Request, res: Response) => {
     try {
-      const deleted = await store.deleteInquiry(req.params.id);
-      if (!deleted) {
-        res.status(404).json({ error: 'Inquiry not found' });
+      const id = req.params.id?.trim();
+      if (!id) {
+        res.status(400).json({ error: 'Inquiry ID is required' });
         return;
       }
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Failed to delete inquiry' });
+      const deleted = await store.deleteInquiry(id);
+      if (!deleted) {
+        res.status(404).json({ error: 'Inquiry not found or already deleted' });
+        return;
+      }
+      res.json({ success: true, message: 'Inquiry deleted successfully' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to delete inquiry' });
     }
   });
 

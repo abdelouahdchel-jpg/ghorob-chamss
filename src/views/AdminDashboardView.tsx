@@ -66,6 +66,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [inquiries, setInquiries] = useState<BookingInquiry[]>([]);
   const [inquiryFilter, setInquiryFilter] = useState<'all' | 'new' | 'contacted' | 'confirmed' | 'cancelled'>('all');
   const [loadingInquiries, setLoadingInquiries] = useState(false);
+  const [inquiryActionMsg, setInquiryActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [deletingInquiryId, setDeletingInquiryId] = useState<string | null>(null);
+  const [confirmDeleteInquiryId, setConfirmDeleteInquiryId] = useState<string | null>(null);
 
   // Apartment Editing State
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
@@ -215,13 +218,33 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   };
 
   const handleDeleteInquiry = async (id: string) => {
-    if (!authToken) return;
-    if (!confirm('Delete this inquiry record?')) return;
+    if (!authToken) {
+      setInquiryActionMsg({
+        type: 'error',
+        text: currentLang === 'ar' ? 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.' : 'Session expired. Please log in again.'
+      });
+      return;
+    }
+
+    setDeletingInquiryId(id);
+    setInquiryActionMsg(null);
+
     try {
       await apiAdminDeleteInquiry(id, authToken);
       setInquiries(prev => prev.filter(i => i.id !== id));
-    } catch (err) {
-      console.error(err);
+      setConfirmDeleteInquiryId(null);
+      setInquiryActionMsg({
+        type: 'success',
+        text: currentLang === 'ar' ? `تم حذف الحجز (${id}) نهائياً بنجاح.` : `Booking inquiry (${id}) deleted successfully.`
+      });
+      setTimeout(() => setInquiryActionMsg(null), 4000);
+    } catch (err: any) {
+      setInquiryActionMsg({
+        type: 'error',
+        text: err.message || (currentLang === 'ar' ? 'فشل حذف الحجز.' : 'Failed to delete inquiry.')
+      });
+    } finally {
+      setDeletingInquiryId(null);
     }
   };
 
@@ -797,6 +820,32 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </button>
           </div>
 
+          {/* Inquiry Action Feedback Message */}
+          {inquiryActionMsg && (
+            <div
+              className={`p-3.5 rounded-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-3 border shadow-xs transition-all ${
+                inquiryActionMsg.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-red-50 border-red-200 text-red-800'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {inquiryActionMsg.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                )}
+                <span>{inquiryActionMsg.text}</span>
+              </div>
+              <button
+                onClick={() => setInquiryActionMsg(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold px-1 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {loadingInquiries ? (
             <p className="text-xs text-slate-500 py-8 text-center">Loading inquiries...</p>
           ) : filteredInquiries.length === 0 ? (
@@ -887,13 +936,37 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                           <span>WhatsApp Guest</span>
                         </a>
 
-                        <button
-                          onClick={() => handleDeleteInquiry(inq.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg"
-                          title="Delete inquiry"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {confirmDeleteInquiryId === inq.id ? (
+                          <div className="flex items-center gap-1.5 bg-red-50 border border-red-200 px-2.5 py-1 rounded-xl">
+                            <span className="text-[11px] font-semibold text-red-800">
+                              {currentLang === 'ar' ? 'تأكيد الحذف؟' : 'Confirm?'}
+                            </span>
+                            <button
+                              disabled={deletingInquiryId === inq.id}
+                              onClick={() => handleDeleteInquiry(inq.id)}
+                              className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[11px] font-bold transition-colors disabled:opacity-50"
+                            >
+                              {deletingInquiryId === inq.id
+                                ? (currentLang === 'ar' ? 'جارٍ الحذف...' : 'Deleting...')
+                                : (currentLang === 'ar' ? 'نعم، احذف' : 'Yes, Delete')}
+                            </button>
+                            <button
+                              disabled={deletingInquiryId === inq.id}
+                              onClick={() => setConfirmDeleteInquiryId(null)}
+                              className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[11px] transition-colors"
+                            >
+                              {currentLang === 'ar' ? 'إلغاء' : 'Cancel'}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeleteInquiryId(inq.id)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title={currentLang === 'ar' ? 'حذف هذا الحجز' : 'Delete this inquiry'}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -147,7 +147,8 @@ export class JsonFileStore implements IDataStore {
 
   async deleteInquiry(id: string): Promise<boolean> {
     const data = this.ensureLoaded();
-    const idx = data.inquiries.findIndex(i => i.id === id);
+    const cleanId = (id || '').trim();
+    const idx = data.inquiries.findIndex(i => (i.id || '').trim() === cleanId);
     if (idx === -1) return false;
     data.inquiries.splice(idx, 1);
     await this.persist();
