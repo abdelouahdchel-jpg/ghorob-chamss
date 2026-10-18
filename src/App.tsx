@@ -8,6 +8,7 @@ import { Language, Apartment, SiteSettings } from './types';
 import { initialApartments, initialSettings } from './data/initialData';
 import { translations } from './data/translations';
 import { detectVisitorLanguage, setLanguagePreference, applyLanguageToDOM } from './i18n';
+import { apiFetchApartments, apiFetchSettings } from './services/api';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { BookingModal } from './components/BookingModal';
@@ -90,29 +91,17 @@ export default function App() {
     }
   }, [currentLang, activePage]);
 
-  // Load from Backend API
+  // Load from Portable Backend API (with graceful static fallback)
   const refreshData = useCallback(async () => {
     try {
-      const [aptRes, setRes] = await Promise.all([
-        fetch('/api/apartments'),
-        fetch('/api/settings')
+      const [fetchedApts, fetchedSettings] = await Promise.all([
+        apiFetchApartments(),
+        apiFetchSettings()
       ]);
-
-      if (aptRes.ok) {
-        const apts = await aptRes.json();
-        if (Array.isArray(apts) && apts.length > 0) {
-          setApartments(apts);
-        }
-      }
-
-      if (setRes.ok) {
-        const s = await setRes.json();
-        if (s && s.whatsappNumber) {
-          setSettings(s);
-        }
-      }
+      setApartments(fetchedApts);
+      setSettings(fetchedSettings);
     } catch (e) {
-      console.warn('Backend API connection fallback to local initial data', e);
+      console.warn('Backend API connection fallback to local data', e);
     }
   }, []);
 

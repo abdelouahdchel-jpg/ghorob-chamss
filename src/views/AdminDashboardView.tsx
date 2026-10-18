@@ -2,6 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { Apartment, BookingInquiry, Language, SiteSettings } from '../types';
 import { translations } from '../data/translations';
 import {
+  apiAdminLogin,
+  apiAdminVerifyToken,
+  apiAdminFetchInquiries,
+  apiAdminSaveApartment,
+  apiAdminDeleteApartment,
+  apiAdminUpdateInquiryStatus,
+  apiAdminDeleteInquiry,
+  apiAdminSaveSettings,
+  apiAdminChangePassword
+} from '../services/api';
+import {
   Lock,
   LogOut,
   Building,
@@ -73,19 +84,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   // Verify auth on mount
   useEffect(() => {
     if (authToken) {
-      fetch('/api/auth/verify', {
-        headers: { Authorization: `Bearer ${authToken}` }
-      })
-        .then(res => {
-          if (!res.ok) {
-            sessionStorage.removeItem('gc_admin_token');
-            setAuthToken(null);
-          }
-        })
-        .catch(() => {
+      apiAdminVerifyToken(authToken).then(isValid => {
+        if (!isValid) {
           sessionStorage.removeItem('gc_admin_token');
           setAuthToken(null);
-        });
+        }
+      });
     }
   }, [authToken]);
 
@@ -104,13 +108,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     if (!authToken) return;
     setLoadingInquiries(true);
     try {
-      const res = await fetch('/api/inquiries', {
-        headers: { Authorization: `Bearer ${authToken}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setInquiries(data);
-      }
+      const data = await apiAdminFetchInquiries(authToken);
+      setInquiries(data);
     } catch (err) {
       console.error('Failed to load inquiries', err);
     } finally {
@@ -124,19 +123,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setIsLoggingIn(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: passwordInput })
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Login failed');
-      }
-
-      sessionStorage.setItem('gc_admin_token', data.token);
-      setAuthToken(data.token);
+      const { token } = await apiAdminLogin(passwordInput);
+      sessionStorage.setItem('gc_admin_token', token);
+      setAuthToken(token);
       setPasswordInput('');
     } catch (err: any) {
       setAuthError(err.message || 'Incorrect password.');
@@ -193,23 +182,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const handleSaveApartment = async () => {
     if (!authToken) return;
     try {
-      const isNew = isAddingNewApartment;
-      const url = isNew ? '/api/apartments' : `/api/apartments/${editingApartment?.id}`;
-      const method = isNew ? 'POST' : 'PUT';
-
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`
-        },
-        body: JSON.stringify(apartmentFormData)
-      });
-
-      if (!res.ok) {
-        throw new Error('Failed to save apartment');
-      }
-
+      await apiAdminSaveApartment(apartmentFormData, authToken, isAddingNewApartment);
       await onRefreshData();
       setEditingApartment(null);
       setIsAddingNewApartment(false);
@@ -223,15 +196,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     if (!confirm('Are you sure you want to delete this apartment listing?')) return;
 
     try {
-      const res = await fetch(`/api/apartments/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${authToken}` }
-      });
-      if (res.ok) {
-        await onRefreshData();
-      }
-    } catch (err) {
-      console.error(err);
+      await apiAdminDeleteApartment(id, authToken);
+      await onRefreshData();
+    } catch (err: any) {
+      alert(err.message || 'Error deleting apartment');
     }
   };
 
@@ -239,17 +207,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const handleUpdateInquiryStatus = async (id: string, newStatus: string) => {
     if (!authToken) return;
     try {
-      const res = await fetch(`/api/inquiries/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`
-        },
-        body: JSON.stringify({ status: newStatus })
-      });
-      if (res.ok) {
-        setInquiries(prev => prev.map(inq => (inq.id === id ? { ...inq, status: newStatus as any } : inq)));
-      }
+      await apiAdminUpdateInquiryStatus(id, newStatus, authToken);
+      setInquiries(prev => prev.map(inq => (inq.id === id ? { ...inq, status: newStatus as any } : inq)));
     } catch (err) {
       console.error(err);
     }
@@ -259,13 +218,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     if (!authToken) return;
     if (!confirm('Delete this inquiry record?')) return;
     try {
-      const res = await fetch(`/api/inquiries/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${authToken}` }
-      });
-      if (res.ok) {
-        setInquiries(prev => prev.filter(i => i.id !== id));
-      }
+      await apiAdminDeleteInquiry(id, authToken);
+      setInquiries(prev => prev.filter(i => i.id !== id));
     } catch (err) {
       console.error(err);
     }
@@ -279,21 +233,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setSettingsSuccess(false);
 
     try {
-      const res = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`
-        },
-        body: JSON.stringify(settingsForm)
-      });
-      if (res.ok) {
-        setSettingsSuccess(true);
-        await onRefreshData();
-        setTimeout(() => setSettingsSuccess(false), 3000);
-      }
-    } catch (err) {
-      console.error(err);
+      await apiAdminSaveSettings(settingsForm, authToken);
+      setSettingsSuccess(true);
+      await onRefreshData();
+      setTimeout(() => setSettingsSuccess(false), 3000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save settings');
     } finally {
       setSettingsSaving(false);
     }
@@ -306,18 +251,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setPwdMsg(null);
 
     try {
-      const res = await fetch('/api/auth/change-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`
-        },
-        body: JSON.stringify({ currentPassword: pwdForm.current, newPassword: pwdForm.next })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Password update failed');
-      }
+      await apiAdminChangePassword(pwdForm.current, pwdForm.next, authToken);
       setPwdMsg({ type: 'success', text: 'Password successfully updated!' });
       setPwdForm({ current: '', next: '' });
     } catch (err: any) {
@@ -389,13 +323,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </button>
           </form>
 
-          {/* Secure Setup Credentials Note */}
+          {/* Secure Admin Portal Notice */}
           <div className="pt-4 border-t border-slate-100 text-center space-y-1">
-            <span className="text-[11px] text-slate-400 block font-medium">
-              Default setup password: <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-mono text-xs">GhorobChams2026!</code>
+            <span className="text-[11px] text-slate-500 block font-medium">
+              Protected Administrator Portal · إقامة غروب شمس
             </span>
             <span className="text-[11px] text-slate-400 block">
-              You can change this password at any time inside the dashboard settings.
+              Enter your master password to access apartment listings, guest inquiries, and rates.
             </span>
           </div>
         </div>

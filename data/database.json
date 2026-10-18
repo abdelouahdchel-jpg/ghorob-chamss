@@ -1,8 +1,19 @@
 {
   "admin": {
-    "username": "owner",
-    "passwordHash": "0ee494ecfc0addbbb04a86d1fc0d977918479546bacbd9005bd290fde663545f",
-    "sessions": []
+    "username": "youssf",
+    "passwordHash": "3bd74a58e4b5409a8b60b50fbe330b489ed86f7b48a3d9f2021dc2daea191c7d",
+    "sessions": [
+      {
+        "token": "528093afc320cb8ebd26bd8e4e740a63a606f88b6e01d6384b17807323a64942",
+        "createdAt": "2026-10-18T08:59:01.740Z",
+        "expiresAt": "2026-10-25T08:59:01.740Z"
+      },
+      {
+        "token": "ac6fbbfc2ecfe1a4e22d7ee9cc8db31a143b8337e29f32dcc2ee1ea5203dafa9",
+        "createdAt": "2026-10-18T08:59:08.761Z",
+        "expiresAt": "2026-10-25T08:59:08.761Z"
+      }
+    ]
   },
   "settings": {
     "whatsappNumber": "212638194995",

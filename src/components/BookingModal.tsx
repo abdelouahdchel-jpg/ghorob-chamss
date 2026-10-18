@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Apartment, Language, SiteSettings } from '../types';
 import { translations } from '../data/translations';
+import { apiSubmitInquiry } from '../services/api';
 import { X, Calendar, MessageCircle, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
 
 interface BookingModalProps {
@@ -137,27 +138,24 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/inquiries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          guestName: formData.guestName,
-          phone: `${formData.countryCode} ${formData.phone}`,
-          countryCode: formData.countryCode,
-          email: formData.email,
-          apartmentId: currentApt?.id,
-          checkIn: formData.checkIn,
-          checkOut: formData.checkOut,
-          guestsCount: formData.guestsCount,
-          message: formData.message
-        })
+      const data = await apiSubmitInquiry({
+        guestName: formData.guestName,
+        phone: `${formData.countryCode} ${formData.phone}`,
+        countryCode: formData.countryCode,
+        email: formData.email,
+        apartmentId: currentApt?.id,
+        apartmentTitle:
+          currentApt?.title[currentLang] ||
+          currentApt?.title.es ||
+          currentApt?.title.de ||
+          currentApt?.title.en ||
+          'Apartment',
+        checkIn: formData.checkIn,
+        checkOut: formData.checkOut,
+        guestsCount: formData.guestsCount,
+        message: formData.message,
+        estimatedTotal
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to submit booking inquiry');
-      }
 
       setSuccessData({
         reference: data.reference,
