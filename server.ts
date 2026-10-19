@@ -331,6 +331,57 @@ Sitemap: ${domain}/sitemap.xml
     }
   });
 
+  // Protected: Upload apartment photo (supports photos from Android camera & phone gallery)
+  app.post('/api/upload', authenticateAdmin, async (req: Request, res: Response) => {
+    try {
+      const { image, filename } = req.body;
+      if (!image || typeof image !== 'string') {
+        res.status(400).json({ error: 'Image data is required.' });
+        return;
+      }
+
+      // Support base64 image data URL
+      const matches = image.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+      if (!matches) {
+        res.status(400).json({ error: 'Invalid image format. Expected base64 image data URL.' });
+        return;
+      }
+
+      let ext = matches[1].toLowerCase();
+      if (ext === 'jpeg') ext = 'jpg';
+      if (!['jpg', 'png', 'webp', 'gif', 'svg'].includes(ext)) {
+        ext = 'jpg';
+      }
+
+      const buffer = Buffer.from(matches[2], 'base64');
+      if (buffer.length > 10 * 1024 * 1024) {
+        res.status(400).json({ error: 'Image file too large. Maximum size is 10MB.' });
+        return;
+      }
+
+      const safeBase = filename
+        ? path.basename(filename).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30)
+        : 'apartment_photo';
+      const uniqueFilename = `apt-${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeBase}.${ext}`;
+      const filePath = path.join(UPLOADS_DIR, uniqueFilename);
+
+      await fs.promises.writeFile(filePath, buffer);
+
+      const publicUrl = `/uploads/${uniqueFilename}`;
+      console.log(`[UPLOAD] Apartment photo saved: ${publicUrl} (${(buffer.length / 1024).toFixed(1)} KB)`);
+
+      res.status(201).json({
+        success: true,
+        url: publicUrl,
+        filename: uniqueFilename,
+        sizeBytes: buffer.length
+      });
+    } catch (err: any) {
+      console.error('[UPLOAD ERROR]', err);
+      res.status(500).json({ error: err.message || 'Failed to save uploaded image' });
+    }
+  });
+
   // Public: Submit booking inquiry (with Rate Limiting, Validation, and Spam Protection)
   app.post('/api/inquiries', inquiryRateLimiter, async (req: Request, res: Response) => {
     try {

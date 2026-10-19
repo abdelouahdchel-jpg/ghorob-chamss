@@ -294,6 +294,45 @@ export async function apiAdminChangePassword(
 }
 
 /**
+ * Admin: Upload Image (Supports Mobile Android Camera, Gallery, and Desktop files)
+ */
+export async function apiAdminUploadImage(
+  dataUrl: string,
+  filename: string,
+  token: string
+): Promise<{ success: boolean; url: string; filename: string }> {
+  try {
+    const res = await fetch(getApiUrl('/api/upload'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ image: dataUrl, filename })
+    });
+
+    const { isJson, data } = await parseSafeResponse(res);
+    if (res.ok && isJson && data?.url) {
+      return data;
+    }
+    if (isJson && data?.error) {
+      throw new Error(data.error);
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes('Failed to fetch')) {
+      throw err;
+    }
+  }
+
+  // Fallback for static hosts without backend: return dataUrl so photo still displays locally
+  return {
+    success: true,
+    url: dataUrl,
+    filename: filename || 'photo.jpg'
+  };
+}
+
+/**
  * Admin: Save Apartment (Create or Update)
  */
 export async function apiAdminSaveApartment(

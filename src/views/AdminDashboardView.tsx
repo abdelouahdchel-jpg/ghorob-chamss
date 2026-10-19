@@ -10,7 +10,8 @@ import {
   apiAdminUpdateInquiryStatus,
   apiAdminDeleteInquiry,
   apiAdminSaveSettings,
-  apiAdminChangePassword
+  apiAdminChangePassword,
+  apiAdminUploadImage
 } from '../services/api';
 import {
   Lock,
@@ -30,8 +31,51 @@ import {
   Key,
   Eye,
   EyeOff,
-  ExternalLink
+  ExternalLink,
+  Camera,
+  Star,
+  Upload,
+  ArrowLeft,
+  ArrowRight,
+  Loader2,
+  Image as ImageIcon
 } from 'lucide-react';
+
+// Client-side image compression for mobile/Android cameras (resizes high-res phone photos to fast web JPEG)
+async function compressImageFile(file: File, maxWidth = 1920, quality = 0.85): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxWidth || height > maxWidth) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxWidth) / height);
+            height = maxWidth;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(e.target?.result as string);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 interface AdminDashboardViewProps {
   currentLang: Language;
@@ -74,6 +118,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
   const [isAddingNewApartment, setIsAddingNewApartment] = useState(false);
   const [apartmentFormData, setApartmentFormData] = useState<Partial<Apartment>>({});
+
+  // Apartment Photo Management State
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState<string | null>(null);
+  const [replacingPhotoIndex, setReplacingPhotoIndex] = useState<number | null>(null);
+  const [manualPhotoUrl, setManualPhotoUrl] = useState('');
+  const [showManualUrlInput, setShowManualUrlInput] = useState(false);
+  const [apartmentSaveSuccessMsg, setApartmentSaveSuccessMsg] = useState<string | null>(null);
 
   // Settings Form State
   const [settingsForm, setSettingsForm] = useState<SiteSettings>(settings);
@@ -187,11 +239,116 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     try {
       await apiAdminSaveApartment(apartmentFormData, authToken, isAddingNewApartment);
       await onRefreshData();
+      setApartmentSaveSuccessMsg(
+        currentLang === 'ar'
+          ? 'تم حفظ وتحديث بيانات وصور الشقة بنجاح!'
+          : 'Apartment details and photos successfully saved!'
+      );
+      setTimeout(() => setApartmentSaveSuccessMsg(null), 4000);
       setEditingApartment(null);
       setIsAddingNewApartment(false);
     } catch (err: any) {
       alert(err.message || 'Error saving apartment');
     }
+  };
+
+  // Photo Handlers (Supports mobile Android camera, gallery, replace, cover, reorder)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !authToken) return;
+
+    setUploadingPhotos(true);
+    const newUrls: string[] = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setUploadProgressText(
+          currentLang === 'ar'
+            ? `جارٍ ضغط ورفع الصورة ${i + 1} من ${files.length}...`
+            : `Processing & uploading photo ${i + 1} of ${files.length}...`
+        );
+        const compressedBase64 = await compressImageFile(file);
+        const res = await apiAdminUploadImage(compressedBase64, file.name, authToken);
+        if (res.url) {
+          newUrls.push(res.url);
+        }
+      }
+
+      setApartmentFormData(prev => ({
+        ...prev,
+        images: [...(prev.images || []), ...newUrls]
+      }));
+    } catch (err: any) {
+      alert(err.message || 'Failed to upload photo');
+    } finally {
+      setUploadingPhotos(false);
+      setUploadProgressText(null);
+      e.target.value = '';
+    }
+  };
+
+  const handleReplacePhoto = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !authToken) return;
+
+    setReplacingPhotoIndex(index);
+    try {
+      const compressedBase64 = await compressImageFile(file);
+      const res = await apiAdminUploadImage(compressedBase64, file.name, authToken);
+      if (res.url) {
+        setApartmentFormData(prev => {
+          const current = [...(prev.images || [])];
+          current[index] = res.url;
+          return { ...prev, images: current };
+        });
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to replace photo');
+    } finally {
+      setReplacingPhotoIndex(null);
+      e.target.value = '';
+    }
+  };
+
+  const handleSetCoverPhoto = (index: number) => {
+    if (index === 0) return;
+    setApartmentFormData(prev => {
+      const images = [...(prev.images || [])];
+      const [chosenCover] = images.splice(index, 1);
+      return {
+        ...prev,
+        images: [chosenCover, ...images]
+      };
+    });
+  };
+
+  const handleDeletePhoto = (index: number) => {
+    setApartmentFormData(prev => {
+      const images = [...(prev.images || [])];
+      images.splice(index, 1);
+      return { ...prev, images };
+    });
+  };
+
+  const handleMovePhoto = (from: number, to: number) => {
+    setApartmentFormData(prev => {
+      const images = [...(prev.images || [])];
+      if (to < 0 || to >= images.length) return prev;
+      const [item] = images.splice(from, 1);
+      images.splice(to, 0, item);
+      return { ...prev, images };
+    });
+  };
+
+  const handleAddManualUrl = () => {
+    if (!manualPhotoUrl.trim()) return;
+    setApartmentFormData(prev => ({
+      ...prev,
+      images: [...(prev.images || []), manualPhotoUrl.trim()]
+    }));
+    setManualPhotoUrl('');
+    setShowManualUrlInput(false);
   };
 
   const handleDeleteApartment = async (id: string) => {
@@ -632,49 +789,225 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 </div>
               </div>
 
-              {/* Photos URLs */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Photos (URLs / Paths)
-                </label>
-                <div className="space-y-2">
-                  {(apartmentFormData.images || []).map((imgUrl, i) => (
-                    <div key={i} className="flex gap-2">
+              {/* Apartment Photos & Cover Management */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-900">
+                      {currentLang === 'ar' ? 'صور الشقة وإدارة صورة الغلاف' : 'Apartment Photos & Cover Gallery'}
+                    </label>
+                    <span className="text-[11px] text-slate-500 block">
+                      {currentLang === 'ar'
+                        ? 'الصورة الأولى (#1) هي الغلاف الرئيسي المعروض للزوار على الموقع. يمكنك التقاط صور من الكاميرا أو الألبوم.'
+                        : 'The first photo (#1) is the main cover shown on the public site. You can snap with your camera or select from gallery.'}
+                    </span>
+                  </div>
+
+                  {/* Android Phone & Desktop Upload Button */}
+                  <label
+                    className={`cursor-pointer px-4 py-2 bg-sky-800 hover:bg-sky-900 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors shrink-0 ${
+                      uploadingPhotos ? 'opacity-70 pointer-events-none' : ''
+                    }`}
+                  >
+                    {uploadingPhotos ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Camera className="w-4 h-4" />
+                    )}
+                    <span>
+                      {uploadingPhotos
+                        ? (currentLang === 'ar' ? 'جارٍ المعالجة والرفع...' : 'Processing...')
+                        : (currentLang === 'ar' ? 'رفع صور من الهاتف / الحاسوب' : 'Upload Photos (Camera / Gallery)')}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      disabled={uploadingPhotos}
+                    />
+                  </label>
+                </div>
+
+                {uploadProgressText && (
+                  <div className="p-2.5 bg-sky-50 border border-sky-200 text-sky-800 text-xs rounded-xl flex items-center gap-2 animate-pulse">
+                    <Loader2 className="w-4 h-4 animate-spin shrink-0 text-sky-600" />
+                    <span>{uploadProgressText}</span>
+                  </div>
+                )}
+
+                {/* Visual Photos Grid */}
+                {(apartmentFormData.images || []).length === 0 ? (
+                  <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center space-y-2 bg-slate-50/50">
+                    <ImageIcon className="w-8 h-8 mx-auto text-slate-400" />
+                    <p className="text-xs text-slate-600 font-medium">
+                      {currentLang === 'ar' ? 'لا توجد صور لهذه الشقة حتى الآن.' : 'No photos added for this apartment yet.'}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      {currentLang === 'ar'
+                        ? 'اضغط على زر الرفع أعلاه لاختيار صور من هاتفك الذكي.'
+                        : 'Tap the upload button above to add photos directly from your phone.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {(apartmentFormData.images || []).map((imgUrl, i) => {
+                      const isCover = i === 0;
+                      const isReplacing = replacingPhotoIndex === i;
+
+                      return (
+                        <div
+                          key={i}
+                          className={`group relative bg-white border-2 rounded-xl overflow-hidden shadow-xs transition-all flex flex-col ${
+                            isCover ? 'border-amber-500 ring-2 ring-amber-400/30' : 'border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          {/* Image Preview Thumbnail */}
+                          <div className="relative aspect-4/3 w-full bg-slate-100 overflow-hidden">
+                            <img
+                              src={imgUrl}
+                              alt={`Photo ${i + 1}`}
+                              className="w-full h-full object-cover"
+                              onError={e => {
+                                (e.target as HTMLImageElement).src =
+                                  '/src/assets/images/apartment_sea_view_1792176294057.jpg';
+                              }}
+                            />
+
+                            {/* Cover / Position Badges */}
+                            <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
+                              <span className="px-1.5 py-0.5 bg-black/70 backdrop-blur-xs text-white text-[10px] font-mono rounded font-bold">
+                                #{i + 1}
+                              </span>
+                              {isCover && (
+                                <span className="px-1.5 py-0.5 bg-amber-500 text-slate-950 text-[10px] font-bold rounded flex items-center gap-1 shadow-xs">
+                                  <Star className="w-2.5 h-2.5 fill-current" />
+                                  <span>{currentLang === 'ar' ? 'الغلاف' : 'Cover'}</span>
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Move Left / Right Arrows */}
+                            <div className="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {i > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMovePhoto(i, i - 1)}
+                                  className="p-1 bg-white/95 hover:bg-white text-slate-700 rounded shadow-xs"
+                                  title={currentLang === 'ar' ? 'تقديم الصورة' : 'Move previous'}
+                                >
+                                  <ArrowLeft className="w-3 h-3" />
+                                </button>
+                              )}
+                              {i < (apartmentFormData.images || []).length - 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMovePhoto(i, i + 1)}
+                                  className="p-1 bg-white/95 hover:bg-white text-slate-700 rounded shadow-xs"
+                                  title={currentLang === 'ar' ? 'تأخير الصورة' : 'Move next'}
+                                >
+                                  <ArrowRight className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Photo Action Bar */}
+                          <div className="p-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-1 text-[11px]">
+                            {!isCover ? (
+                              <button
+                                type="button"
+                                onClick={() => handleSetCoverPhoto(i)}
+                                className="text-amber-800 hover:text-amber-900 font-bold hover:underline flex items-center gap-1"
+                                title={currentLang === 'ar' ? 'تعيين كغلاف رئيسي' : 'Set as main cover'}
+                              >
+                                <Star className="w-3 h-3" />
+                                <span>{currentLang === 'ar' ? 'تعيين كغلاف' : 'Set Cover'}</span>
+                              </button>
+                            ) : (
+                              <span className="text-amber-800 font-bold flex items-center gap-1 text-[10px]">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>{currentLang === 'ar' ? 'الغلاف الرئيسي' : 'Main Cover'}</span>
+                              </span>
+                            )}
+
+                            <div className="flex items-center gap-1.5">
+                              {/* Replace Button with hidden file input */}
+                              <label
+                                className="cursor-pointer text-sky-700 hover:text-sky-900 p-1 hover:bg-sky-50 rounded"
+                                title={currentLang === 'ar' ? 'استبدال هذه الصورة' : 'Replace photo'}
+                              >
+                                {isReplacing ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
+                                ) : (
+                                  <Upload className="w-3.5 h-3.5" />
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={e => handleReplacePhoto(i, e)}
+                                  className="hidden"
+                                  disabled={isReplacing}
+                                />
+                              </label>
+
+                              {/* Delete Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePhoto(i)}
+                                className="text-red-600 hover:text-red-700 p-1 hover:bg-red-50 rounded"
+                                title={currentLang === 'ar' ? 'حذف الصورة' : 'Delete photo'}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Optional Manual URL Input */}
+                <div className="pt-1">
+                  {!showManualUrlInput ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowManualUrlInput(true)}
+                      className="text-[11px] text-slate-500 hover:text-sky-800 font-medium flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{currentLang === 'ar' ? 'أو إضافة رابط صورة خارجي (URL)' : 'Or add external image URL'}</span>
+                    </button>
+                  ) : (
+                    <div className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl border border-slate-200">
                       <input
                         type="text"
-                        value={imgUrl}
-                        onChange={e => {
-                          const updated = [...(apartmentFormData.images || [])];
-                          updated[i] = e.target.value;
-                          setApartmentFormData({ ...apartmentFormData, images: updated });
-                        }}
+                        value={manualPhotoUrl}
+                        onChange={e => setManualPhotoUrl(e.target.value)}
+                        placeholder="https://example.com/apartment_view.jpg"
                         className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
                       />
                       <button
                         type="button"
-                        onClick={() => {
-                          const updated = (apartmentFormData.images || []).filter((_, idx) => idx !== i);
-                          setApartmentFormData({ ...apartmentFormData, images: updated });
-                        }}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                        onClick={handleAddManualUrl}
+                        className="px-3 py-1.5 bg-sky-800 hover:bg-sky-900 text-white rounded-lg text-xs font-bold"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        {currentLang === 'ar' ? 'إضافة' : 'Add'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowManualUrlInput(false);
+                          setManualPhotoUrl('');
+                        }}
+                        className="px-2 py-1.5 text-slate-500 hover:text-slate-700 text-xs"
+                      >
+                        {currentLang === 'ar' ? 'إلغاء' : 'Cancel'}
                       </button>
                     </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setApartmentFormData({
-                        ...apartmentFormData,
-                        images: [...(apartmentFormData.images || []), '/src/assets/images/apartment_sea_view_1792176294057.jpg']
-                      });
-                    }}
-                    className="text-xs text-sky-700 font-semibold hover:underline flex items-center gap-1"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Photo URL</span>
-                  </button>
+                  )}
                 </div>
               </div>
 
@@ -699,6 +1032,22 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   {t.cancel}
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Apartment Save Success Notification */}
+          {apartmentSaveSuccessMsg && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-medium rounded-xl flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{apartmentSaveSuccessMsg}</span>
+              </div>
+              <button
+                onClick={() => setApartmentSaveSuccessMsg(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold px-1 text-sm"
+              >
+                ✕
+              </button>
             </div>
           )}
 
